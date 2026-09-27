@@ -58,13 +58,18 @@ function readBody(req) {
     let tooLarge = false;
     const chunks = [];
     req.on("data", (c) => {
-      if (tooLarge) return; // restul se citește și se aruncă, ca să putem răspunde 413
       size += c.length;
-      if (size > MAX_BODY) { tooLarge = true; chunks.length = 0; reject(Object.assign(new Error("too_large"), { code: 413 })); return; }
+      if (tooLarge) {
+        // Restul se citește și se aruncă; răspundem 413 abia la final, altfel clientul care încă
+        // trimite primește o conexiune ruptă în loc de răspuns. Peste 4× limita tăiem conexiunea.
+        if (size > 4 * MAX_BODY) req.destroy();
+        return;
+      }
+      if (size > MAX_BODY) { tooLarge = true; chunks.length = 0; return; }
       chunks.push(c);
     });
     req.on("end", () => {
-      if (tooLarge) return;
+      if (tooLarge) return reject(Object.assign(new Error("too_large"), { code: 413 }));
       const raw = Buffer.concat(chunks).toString("utf8");
       if (!raw) return resolve(undefined);
       try { resolve(JSON.parse(raw)); } catch { resolve(raw); }
