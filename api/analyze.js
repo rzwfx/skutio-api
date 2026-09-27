@@ -4,6 +4,7 @@
 
 const { isAuthorized, setCors } = require("../lib/auth");
 const { loadPrompt } = require("../lib/prompts");
+const { recordAnalysis } = require("../lib/db");
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 // Configurabil din env. Default Sonnet 4.6 — pre-revenue ținem costul jos (vezi regula "free tools until revenue").
@@ -107,7 +108,19 @@ async function handler(req, res) {
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+    const started = Date.now();
     const { status, body: out } = await analyzeMessage({ text: body.text || "", image: body.image, mediaType: body.mediaType });
+    if (status === 200) {
+      // Doar metadate — textul/imaginea nu se salvează. Fără await: răspunsul nu așteaptă baza de date.
+      recordAnalysis({
+        source: "api",
+        inputType: body.image ? "image" : "text",
+        inputChars: body.image ? null : String(body.text || "").trim().length,
+        verdict: out.verdict,
+        score: out.score,
+        durationMs: Date.now() - started,
+      });
+    }
     return res.status(status).json(out);
   } catch (err) {
     return res.status(500).json({ error: "internal_error" });
