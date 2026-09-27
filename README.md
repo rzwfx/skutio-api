@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rzwfx/skutio-api/actions/workflows/ci.yml/badge.svg)](https://github.com/rzwfx/skutio-api/actions/workflows/ci.yml)
 
-Backend-ul aplicației mobile **Skutio**, care detectează mesaje și site-uri de tip scam cu ajutorul Claude API. Rulează pe un server Linux propriu (Hetzner Cloud, Ubuntu 24.04), cu Node.js sub systemd, în spatele Nginx cu HTTPS de la Let's Encrypt.
+Backend-ul aplicației mobile **Skutio**, care detectează mesaje și site-uri de tip scam cu ajutorul Claude API. Rulează pe un server Linux propriu (Hetzner Cloud, Ubuntu 24.04), cu Node.js sub systemd, PostgreSQL pentru statistici și Nginx cu HTTPS de la Let's Encrypt în față.
 
 **Demo live:** https://api.skutio.app. Pagina rulează o analiză AI reală pe mesaje de test, direct pe acest server.
 
@@ -25,8 +25,10 @@ Nginx ── TLS (Let's Encrypt), redirect HTTP→HTTPS, rate limiting pe IP, he
    ▼
 Node.js pe 127.0.0.1:3000 ── serviciu systemd `skutio-api`, user fără privilegii `skutio`
    │  verifică secretul aplicației, încarcă promptul de pe disc
-   ▼
-Claude API (Anthropic)
+   ├──────────────────────────────┐
+   ▼                              ▼
+Claude API (Anthropic)       PostgreSQL 16 (local, socket Unix, peer auth)
+                                  metadatele analizelor → /stats · backup zilnic (cron)
 ```
 
 | Componentă | Unde | Rol |
@@ -36,12 +38,15 @@ Claude API (Anthropic)
 | `api/trustcheck.js` | | Calculează un scor de încredere pentru un domeniu, din vârsta domeniului (RDAP) și raționamentul modelului. |
 | `lib/auth.js` | | Gate anti-abuz: secret partajat în header-ul `x-skutio-key`, comparat în timp constant. |
 | `lib/prompts.js` | | Încarcă prompturile de producție din `/etc/skutio-api/prompts`. În repo sunt doar variante exemplu. |
+| `lib/db.js` | | PostgreSQL: salvează metadatele fiecărei analize (fără text) și calculează statisticile pentru `/stats`. Opțional: fără config, API-ul merge normal. |
+| `migrations/` | | Migrații SQL versionate, aplicate în ordine de `scripts/migrate.js` (`npm run migrate`), fiecare într-o tranzacție. |
 | `lib/demo.js` | | Demo public pe 3 mesaje fixe: cache 1 oră, un singur apel la Claude pentru cereri simultane, fallback pe ultimul rezultat bun. |
 | `public/` | | Pagina de prezentare (HTML/CSS/JS fără dependențe, CSP strict). |
-| `test/` | | 19 teste (`node --test`), cu Claude API simulat. Rulate de GitHub Actions la fiecare PR. |
+| `test/` | | 27 de teste (`node --test`), cu Claude API simulat. 7 rulează pe un PostgreSQL real. Rulate de GitHub Actions la fiecare PR. |
 | `deploy/skutio-api.service` | `/etc/systemd/system/` | Serviciul systemd: pornire la boot, restart automat, hardening. |
 | `deploy/nginx-api.skutio.app.conf` | `/etc/nginx/sites-available/` | Reverse proxy, HTTPS, rate limiting per rută, headere de securitate. |
 | `deploy/nginx-ratelimit.conf` | `/etc/nginx/conf.d/` | Zonele de rate limiting (per IP). |
+| `deploy/skutio-db-backup.sh` + `.cron` | `/usr/local/bin/`, `/etc/cron.d/` | Backup zilnic cu `pg_dump`, păstrat 7 zile. |
 
 ## API
 
@@ -51,6 +56,7 @@ Claude API (Anthropic)
 | GET | `/health` | public | 10/s |
 | GET | `/demo?sample=1..3` | public | 10/min |
 | GET | `/demo/samples` | public | 10/s |
+| GET | `/stats` | public | 10/s |
 | POST | `/api/analyze` | `x-skutio-key` | 20/min |
 | POST | `/api/trustcheck` | `x-skutio-key` | 20/min |
 
@@ -59,6 +65,9 @@ Endpoint-urile `POST` cer header-ul `x-skutio-key`. Fără el, răspunsul e `401
 ```bash
 curl https://api.skutio.app/health
 # {"ok":true}
+
+curl https://api.skutio.app/stats
+# {"enabled":true,"total":42,"last_24h":7,"dangerous":28,"suspicious":3,"safe":11,"avg_duration_ms":6120,...}
 
 curl https://api.skutio.app/demo?sample=1
 # {"sample":{...},"result":{"verdict":"dangerous","score":95,...},"source":"cache","server":{"os":"Ubuntu 24.04.x LTS",...}}
@@ -98,10 +107,11 @@ Fără `PROMPTS_DIR`, serverul folosește prompturile exemplu din cod și scrie 
 ### Teste
 
 ```bash
-npm test                    # 19 teste, fără cheie Claude și fără internet
+npm test                                                   # 20 de teste, fără Claude, internet sau bază de date
+DATABASE_URL=postgres://user:parola@localhost/skutio_test npm test   # + 7 teste PostgreSQL (șterge tabelele din baza dată!)
 ```
 
-Acoperă rutele, codurile de eroare (401/404/405/413/502), limitele de input, pagina de prezentare (inclusiv CSP) și demo-ul: cache, cereri simultane deduplicate și fallback când Claude e indisponibil. Apelul la Claude e simulat prin înlocuirea `fetch`. [GitHub Actions](.github/workflows/ci.yml) rulează testele la fiecare push și pull request.
+Acoperă rutele, codurile de eroare (401/404/405/413/502), limitele de input, pagina de prezentare (inclusiv CSP), demo-ul (cache, cereri simultane deduplicate, fallback când Claude e indisponibil) și baza de date: migrații idempotente, constrângerile tabelului, faptul că textul mesajelor nu se salvează și agregările din `/stats`. Apelul la Claude e simulat prin înlocuirea `fetch`. [GitHub Actions](.github/workflows/ci.yml) rulează toate testele la fiecare push și pull request, cu un container PostgreSQL 16.
 
 ---
 
@@ -197,7 +207,34 @@ Secretele se adaugă fără să apară pe ecran sau în istoricul shell-ului:
 ssh -t skutio 'read -rsp "Cheia: " K; echo; echo "ANTHROPIC_API_KEY=$K" | sudo tee -a /etc/skutio-api/env >/dev/null'
 ```
 
-### 4. Serviciul systemd
+### 4. PostgreSQL
+
+```bash
+sudo apt-get install -y postgresql            # PostgreSQL 16, ascultă doar pe localhost
+sudo -u postgres createuser skutio            # rol cu același nume ca userul Linux al serviciului
+sudo -u postgres createdb -O skutio skutio
+```
+
+Aplicația se conectează prin socket Unix cu **peer authentication**: Postgres acceptă conexiunea pentru că sistemul de operare garantează că procesul rulează ca userul `skutio`. Nu există parolă care să poată scăpa. În `/etc/skutio-api/env`:
+
+```
+PGHOST=/var/run/postgresql
+PGDATABASE=skutio
+PGUSER=skutio
+```
+
+Migrații și backup:
+
+```bash
+cd /opt/skutio-api && npm ci --omit=dev
+sudo -u skutio PGHOST=/var/run/postgresql PGDATABASE=skutio PGUSER=skutio npm run migrate
+
+sudo install -m 755 deploy/skutio-db-backup.sh /usr/local/bin/skutio-db-backup.sh
+sudo install -m 644 deploy/skutio-db-backup.cron /etc/cron.d/skutio-db-backup
+sudo -u postgres /usr/local/bin/skutio-db-backup.sh    # test manual
+```
+
+### 5. Serviciul systemd
 
 ```bash
 sudo cp /opt/skutio-api/deploy/skutio-api.service /etc/systemd/system/
@@ -206,7 +243,7 @@ sudo systemctl enable --now skutio-api
 curl localhost:3000/health
 ```
 
-### 5. Nginx, DNS, HTTPS
+### 6. Nginx, DNS, HTTPS
 
 ```bash
 sudo apt-get install -y nginx certbot python3-certbot-nginx
@@ -240,11 +277,17 @@ sudo certbot renew --dry-run          # reînnoirea automată e făcută de cert
 | Firewall | `sudo ufw status verbose` |
 | Certificat | `sudo certbot certificates` |
 | Cereri blocate de rate limiting | `sudo grep "limiting requests" /var/log/nginx/error.log` |
+| Consolă SQL | `sudo -u skutio psql -d skutio` |
+| Ultimele analize | `sudo -u skutio psql -d skutio -c "SELECT created_at, source, verdict, score FROM analyses ORDER BY id DESC LIMIT 10"` |
+| Backup-uri | `ls -lh /var/backups/skutio-db/` · log: `grep skutio-db-backup /var/log/syslog` |
+| Restaurare backup | `sudo -u postgres pg_restore -d skutio --clean /var/backups/skutio-db/skutio-AAAA-LL-ZZ.dump` |
 
 **Deploy al unei versiuni noi** (după merge în `main`):
 
 ```bash
-ssh skutio 'cd /opt/skutio-api && git pull && sudo systemctl restart skutio-api && sleep 1 && curl -s localhost:3000/health'
+ssh skutio 'cd /opt/skutio-api && git pull && npm ci --omit=dev \
+  && sudo -u skutio PGHOST=/var/run/postgresql PGDATABASE=skutio PGUSER=skutio npm run migrate \
+  && sudo systemctl restart skutio-api && sleep 1 && curl -s localhost:3000/health'
 ```
 
 **Rotirea cheii Claude** (cheia `skutio-vps` expiră pe 26 dec 2026): creezi cheia nouă în Anthropic Console, înlocuiești linia `ANTHROPIC_API_KEY` din `/etc/skutio-api/env` (`sudo nano`), faci restart la serviciu și abia apoi revoci cheia veche.
@@ -256,6 +299,8 @@ ssh skutio 'cd /opt/skutio-api && git pull && sudo systemctl restart skutio-api 
 - **Node ascultă doar pe 127.0.0.1**, iar portul 3000 nu e accesibil din internet. Singura intrare e Nginx.
 - **Rate limiting pe IP în Nginx**, separat pe rute: endpoint-urile AI (cost real) au limita cea mai strictă. Peste limită, Nginx răspunde `429` fără să mai ajungă la Node.
 - **Headere de securitate:** HSTS, `X-Frame-Options: DENY`, `Referrer-Policy`, `nosniff`, iar pagina de prezentare are un CSP strict (fără scripturi sau stiluri externe ori inline). `server_tokens off` ascunde versiunea Nginx.
+- **PostgreSQL:** ascultă doar local, iar aplicația se conectează prin peer auth, fără parolă. Se salvează **doar metadate** (verdict, scor, durată), niciodată textul sau imaginea analizată: minimizarea datelor cerută de GDPR, verificată și de un test. Constrângerile `CHECK` din tabel resping date invalide chiar dacă aplicația ar avea un bug. Înregistrarea nu blochează niciodată răspunsul: dacă baza de date cade, utilizatorul își primește verdictul oricum.
+- **Compromis asumat (baza de date):** aplicația folosește același rol și pentru migrații, și pentru runtime. Separarea lor (un rol doar cu `INSERT`/`SELECT` pentru aplicație) e pasul următor.
 - **Demo-ul public e sigur din punct de vedere al costului:** mesaje fixe, cache de o oră, deduplicarea cererilor simultane. Costul maxim e de 3 × 24 apeluri pe zi, indiferent de trafic.
 - **Secretele și prompturile stau în afara git**, în `/etc/skutio-api/`, cu permisiuni `600`/`640`. Istoricul repo-ului a fost verificat să nu conțină chei sau promptul de producție.
 - **Cheie Claude dedicată serverului**, cu expirare, ca să poată fi revocată independent de alte medii.

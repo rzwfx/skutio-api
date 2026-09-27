@@ -1,0 +1,5 @@
+# /etc/cron.d/skutio-db-backup — backup zilnic la 03:15 (ora serverului, UTC).
+# Output-ul (inclusiv erorile) ajunge în syslog: grep skutio-db-backup /var/log/syslog
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+15 3 * * * postgres /usr/local/bin/skutio-db-backup.sh 2>&1 | logger -t skutio-db-backup

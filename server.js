@@ -7,6 +7,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { getDemo, listSamples } = require("./lib/demo");
+const db = require("./lib/db");
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -58,13 +59,18 @@ function readBody(req) {
     let tooLarge = false;
     const chunks = [];
     req.on("data", (c) => {
-      if (tooLarge) return; // restul se citește și se aruncă, ca să putem răspunde 413
       size += c.length;
-      if (size > MAX_BODY) { tooLarge = true; chunks.length = 0; reject(Object.assign(new Error("too_large"), { code: 413 })); return; }
+      if (tooLarge) {
+        // Restul se citește și se aruncă; răspundem 413 abia la final, altfel clientul care încă
+        // trimite primește o conexiune ruptă în loc de răspuns. Peste 4× limita tăiem conexiunea.
+        if (size > 4 * MAX_BODY) req.destroy();
+        return;
+      }
+      if (size > MAX_BODY) { tooLarge = true; chunks.length = 0; return; }
       chunks.push(c);
     });
     req.on("end", () => {
-      if (tooLarge) return;
+      if (tooLarge) return reject(Object.assign(new Error("too_large"), { code: 413 }));
       const raw = Buffer.concat(chunks).toString("utf8");
       if (!raw) return resolve(undefined);
       try { resolve(JSON.parse(raw)); } catch { resolve(raw); }
@@ -92,6 +98,13 @@ function createServer() {
     if (STATIC_FILES[route]) {
       if (!isRead) return res.status(405).json({ error: "method_not_allowed" });
       return serveStatic(req, res, STATIC_FILES[route]);
+    }
+
+    if (route === "/stats") {
+      if (!isRead) return res.status(405).json({ error: "method_not_allowed" });
+      const { status, body } = await db.getStats();
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(status).json(body);
     }
 
     if (route === "/demo/samples") {
@@ -134,8 +147,8 @@ function createServer() {
 if (require.main === module) {
   const server = createServer();
   server.listen(PORT, HOST, () => console.log(`skutio-api ascultă pe http://${HOST}:${PORT}`));
-  // systemd trimite SIGTERM la stop/restart: închidem curat conexiunile.
-  process.on("SIGTERM", () => server.close(() => process.exit(0)));
+  // systemd trimite SIGTERM la stop/restart: închidem curat conexiunile HTTP și pe cele la baza de date.
+  process.on("SIGTERM", () => server.close(() => db.close().finally(() => process.exit(0))));
 }
 
 module.exports = { createServer };

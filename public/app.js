@@ -27,6 +27,26 @@ async function checkHealth() {
   }
 }
 
+const fmt = (n) => Number(n).toLocaleString("ro-RO");
+const sec = (ms) => (ms / 1000).toLocaleString("ro-RO", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+async function loadStats() {
+  try {
+    const r = await fetch("/stats", { cache: "no-store" });
+    if (!r.ok) return;
+    const s = await r.json();
+    if (!s.enabled) return;
+    $("st-total").textContent = fmt(s.total);
+    $("st-24h").textContent = fmt(s.last_24h);
+    $("st-danger").textContent = s.total ? `${Math.round((s.dangerous / s.total) * 100)}%` : "–";
+    $("st-avg").textContent = s.avg_duration_ms ? `${sec(s.avg_duration_ms)} s` : "–";
+    $("st-meta").textContent = s.since
+      ? `Date colectate din ${new Date(s.since).toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" })} · actualizat la fiecare minut`
+      : "";
+    $("stats-card").hidden = false;
+  } catch {}
+}
+
 let current = 0;
 
 async function loadDemo(sample) {
@@ -47,6 +67,7 @@ async function loadDemo(sample) {
     if (r.status === 429) throw new Error("Prea multe cereri într-un timp scurt. Încearcă din nou peste un minut.");
     if (!r.ok) throw new Error("Analiza nu e disponibilă momentan. Încearcă din nou puțin mai târziu.");
     render(data);
+    if (data.source === "live") loadStats(); // o analiză nouă tocmai a intrat în baza de date
   } catch (e) {
     if (sample !== current) return;
     $("loading").hidden = true;
@@ -75,7 +96,7 @@ function render({ sample, result, analyzedAt, analysisMs, source, server }) {
   $("result-body").hidden = false;
 
   const when = source === "live" ? "Analizat chiar acum" : `Analizat ${timeAgo(analyzedAt)}`;
-  $("meta").textContent = `${when} de Claude, în ${(analysisMs / 1000).toFixed(1)} s · ${server.os} · Node ${server.node}`;
+  $("meta").textContent = `${when} de Claude, în ${sec(analysisMs)} s · ${server.os} · Node ${server.node}`;
   $("server-line").textContent = `Servit de ${server.host} · ${server.os}`;
 }
 
@@ -90,6 +111,7 @@ fetch("/demo/samples").then((r) => r.json()).then((d) => {
   if (SAMPLE_TEXT[current] && $("message").textContent === "…") $("message").textContent = SAMPLE_TEXT[current];
 }).catch(() => {});
 
+loadStats();
 checkHealth();
 setInterval(checkHealth, 30000);
 loadDemo(1);

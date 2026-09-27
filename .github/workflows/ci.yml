@@ -1,4 +1,5 @@
-# Rulează testele la fiecare push pe main și la fiecare pull request.
+# Rulează testele la fiecare push pe main și la fiecare pull request,
+# inclusiv testele de bază de date, pe un PostgreSQL 16 real (container).
 name: CI
 
 on:
@@ -12,12 +13,34 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: skutio
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: skutio_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U skutio"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://skutio:ci-only-password@localhost:5432/skutio_test
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
+      - name: Instalare dependențe
+        run: npm ci
       - name: Verificare sintaxă
-        run: for f in server.js api/*.js lib/*.js public/app.js; do node --check "$f"; done
-      - name: Teste
+        run: for f in server.js api/*.js lib/*.js scripts/*.js public/app.js; do node --check "$f"; done
+      - name: Teste (inclusiv PostgreSQL)
         run: npm test
