@@ -229,6 +229,7 @@ Migrații și backup:
 cd /opt/skutio-api && npm ci --omit=dev
 sudo -u skutio PGHOST=/var/run/postgresql PGDATABASE=skutio PGUSER=skutio npm run migrate
 
+sudo install -d -m 700 -o postgres -g postgres /var/backups/skutio-db   # /var/backups e al lui root
 sudo install -m 755 deploy/skutio-db-backup.sh /usr/local/bin/skutio-db-backup.sh
 sudo install -m 644 deploy/skutio-db-backup.cron /etc/cron.d/skutio-db-backup
 sudo -u postgres /usr/local/bin/skutio-db-backup.sh    # test manual
