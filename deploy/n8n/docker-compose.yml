@@ -1,0 +1,35 @@
+# n8n (automatizări) în Docker. Pe server: /opt/n8n/docker-compose.yml
+#   sudo docker compose -f /opt/n8n/docker-compose.yml up -d
+# Datele (workflow-uri, credențiale criptate, cheia de criptare) stau în volumul n8n_data.
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.40.7   # versiune fixată: upgrade-urile se fac explicit
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      # DOAR local. Porturile publicate de Docker ocolesc ufw, deci "5678:5678" ar expune
+      # n8n direct în internet. Din afară se ajunge numai prin Nginx (HTTPS).
+      - "127.0.0.1:5678:5678"
+    environment:
+      N8N_HOST: n8n.skutio.app
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://n8n.skutio.app/
+      N8N_PROXY_HOPS: "1"                    # n8n e în spatele Nginx: IP-ul real vine din X-Forwarded-For
+      GENERIC_TIMEZONE: Europe/Bucharest     # pentru nodurile Schedule (cron)
+      TZ: Europe/Bucharest
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"       # fără telemetrie
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    deploy:
+      resources:
+        limits:
+          memory: 1g                         # serverul are 4 GB; API-ul și Postgres au prioritate
+
+volumes:
+  n8n_data:
