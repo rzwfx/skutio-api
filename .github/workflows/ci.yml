@@ -38,9 +38,14 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mcp/package-lock.json
       - name: Instalare dependențe
         run: npm ci
       - name: Verificare sintaxă
-        run: for f in server.js api/*.js lib/*.js scripts/*.js public/app.js; do node --check "$f"; done
+        run: for f in server.js api/*.js lib/*.js scripts/*.js public/app.js mcp/server.js; do node --check "$f"; done
       - name: Teste (inclusiv PostgreSQL)
         run: npm test
+      - name: Teste server MCP
+        run: npm ci --prefix mcp && npm test --prefix mcp
