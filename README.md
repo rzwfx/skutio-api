@@ -159,7 +159,8 @@ Credențialele (tokenul botului Telegram, cheia Claude, secretul webhook-ului) s
 - **Setup-ul inițial restricționat pe IP**: o instanță nouă n8n îi permite primului vizitator să-și creeze contul de owner. Până la crearea contului, Nginx a permis accesul doar de pe IP-ul administratorului (`deploy/`, snippet-ul `n8n-setup-allowlist`).
 - **Rate limiting**: login 5/min (contra ghicirii parolei), webhook-uri 10/min.
 - **Versiune fixată** (`n8nio/n8n:2.40.7`), limită de memorie 1 GB, fără telemetrie. Userul `razvan` nu e în grupul `docker` (echivalent cu root): comenzile Docker se dau explicit cu `sudo`.
-- **SSRF**: fluxul LinkedIn refuză URL-uri către rețele interne (`localhost`, `10.x`, `192.168.x`, `169.254.x`, IPv6 local). Limită cunoscută: se verifică numele, nu IP-ul rezolvat prin DNS.
+- **Lecții din n8n 2.x** (găsite la primul test real): în nodurile Code, în modul implicit „Run Once for All Items", `$json` nu există și datele se citesc cu `$input.first().json`. Iar sandbox-ul task runner nu are clasa globală `URL`, deci parsarea se face cu regex. Ambele erori erau ascunse de un `try/catch` și au ieșit la iveală inspectând datele execuției.
+- **SSRF**: fluxul LinkedIn refuză URL-uri către rețele interne (`localhost`, `10.x`, `192.168.x`, `169.254.x`, IPv6 local, IP-uri scrise zecimal precum `http://2130706433/`). Limită cunoscută: se verifică numele, nu IP-ul rezolvat prin DNS.
 
 ---
 
