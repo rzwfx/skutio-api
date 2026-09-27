@@ -22,7 +22,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Acceptă doar URL-uri http(s) publice. Blochează adresele interne (protecție SSRF):\n// altfel cineva ar putea folosi fluxul ca să citească servicii din rețeaua serverului.\n// Limită cunoscută: verificăm numele, nu IP-ul rezolvat prin DNS.\nconst raw = String($json.body?.url ?? '').trim();\nlet u;\ntry { u = new URL(raw); } catch { return [{ json: { valid: false, error: 'invalid_url' } }]; }\nconst h = u.hostname.toLowerCase().replace(/^\\[|\\]$/g, '');\nconst internal =\n  h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') ||\n  !h.includes('.') && !h.includes(':') ||\n  /^(0|10|127)\\./.test(h) || /^169\\.254\\./.test(h) || /^192\\.168\\./.test(h) || /^172\\.(1[6-9]|2\\d|3[01])\\./.test(h) ||\n  h === '::1' || /^f[cd]/.test(h) || /^fe80:/.test(h);\nif (!/^https?:$/.test(u.protocol) || internal) return [{ json: { valid: false, error: 'url_not_allowed' } }];\nreturn [{ json: { valid: true, url: u.toString() } }];"
+        "jsCode": "// Mod „Run Once for All Items”: $json nu există aici, datele vin din $input.first().json.\n// Acceptă doar URL-uri http(s) publice. Blochează adresele interne (protecție SSRF):\n// altfel cineva ar putea folosi fluxul ca să citească servicii din rețeaua serverului.\n// Limită cunoscută: verificăm numele, nu IP-ul rezolvat prin DNS.\n// Parsare cu regex: sandbox-ul task runner din n8n nu are clasa globală URL.\nconst raw = String($input.first().json.body?.url ?? '').trim();\nconst m = raw.match(/^(https?):\\/\\/(\\[[^\\]]+\\]|[^\\/?#:@\\s]+)(:\\d{1,5})?([\\/?#][^\\s]*)?$/i);\nif (!m || raw.length > 2000) return [{ json: { valid: false, error: 'invalid_url' } }];\nconst h = m[2].toLowerCase().replace(/^\\[|\\]$/g, '');\nconst internal =\n  h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') ||\n  (!h.includes('.') && !h.includes(':')) ||\n  /^(0|10|127)\\./.test(h) || /^169\\.254\\./.test(h) || /^192\\.168\\./.test(h) || /^172\\.(1[6-9]|2\\d|3[01])\\./.test(h) ||\n  h === '::1' || /^f[cd]/.test(h) || /^fe80:/.test(h) || /^\\d+$/.test(h);\nif (internal) return [{ json: { valid: false, error: 'url_not_allowed' } }];\nreturn [{ json: { valid: true, url: raw } }];"
       },
       "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000002",
       "name": "Validează URL-ul",
@@ -100,7 +100,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Titlul și textul articolului din HTML (fără scripturi, stiluri și tag-uri), max 8000 caractere.\nconst html = String($json.data ?? '');\nconst url = $('Validează URL-ul').first().json.url;\nconst decode = (s) => s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>');\nconst title = decode((html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1] ?? '').trim());\nconst body = html.match(/<article[\\s\\S]*?<\\/article>/i)?.[0] ?? html;\nconst text = decode(body\n  .replace(/<(script|style|nav|header|footer|aside|noscript)[\\s\\S]*?<\\/\\1>/gi, ' ')\n  .replace(/<[^>]+>/g, ' '))\n  .replace(/\\s+/g, ' ').trim().slice(0, 8000);\nreturn [{ json: { url, title, text, chars: text.length } }];"
+        "jsCode": "// Mod „Run Once for All Items”: $json nu există aici, datele vin din $input.first().json.\n// Titlul și textul articolului din HTML (fără scripturi, stiluri și tag-uri), max 8000 caractere.\nconst html = String($input.first().json.data ?? '');\nconst url = $('Validează URL-ul').first().json.url;\nconst decode = (s) => s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>');\nconst title = decode((html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1] ?? '').trim());\nconst body = html.match(/<article[\\s\\S]*?<\\/article>/i)?.[0] ?? html;\nconst text = decode(body\n  .replace(/<(script|style|nav|header|footer|aside|noscript)[\\s\\S]*?<\\/\\1>/gi, ' ')\n  .replace(/<[^>]+>/g, ' '))\n  .replace(/\\s+/g, ' ').trim().slice(0, 8000);\nreturn [{ json: { url, title, text, chars: text.length } }];"
       },
       "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000005",
       "name": "Extrage textul",
@@ -144,7 +144,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const post = $json.content?.[0]?.text?.trim() ?? '';\nconst src = $('Extrage textul').first().json;\nreturn [{ json: { ok: post.length > 0, source: { url: src.url, title: src.title }, post, chars: post.length, model: $json.model } }];"
+        "jsCode": "// Mod „Run Once for All Items”: $json nu există aici, datele vin din $input.first().json.\nconst ai = $input.first().json;\nconst post = ai.content?.[0]?.text?.trim() ?? '';\nconst src = $('Extrage textul').first().json;\nreturn [{ json: { ok: post.length > 0, source: { url: src.url, title: src.title }, post, chars: post.length, model: ai.model } }];"
       },
       "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000007",
       "name": "Formatează răspunsul",
