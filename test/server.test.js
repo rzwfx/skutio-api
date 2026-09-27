@@ -7,6 +7,10 @@ const assert = require("node:assert/strict");
 process.env.SKUTIO_APP_SECRET = "test-secret";
 process.env.ANTHROPIC_API_KEY = "test-key";
 process.env.PROMPTS_DIR = "/nonexistent"; // folosește prompturile exemplu din cod
+// Testele de aici rulează FĂRĂ bază de date: API-ul trebuie să meargă și așa.
+// Partea de PostgreSQL e testată separat, în db.test.js.
+delete process.env.DATABASE_URL;
+delete process.env.PGDATABASE;
 
 const { createServer } = require("../server");
 const demo = require("../lib/demo");
@@ -177,4 +181,10 @@ test("/demo nu acceptă POST (nu poate fi folosit ca proxy gratuit)", async () =
   const r = await post("/demo", { text: "orice" });
   assert.equal(r.status, 405);
   assert.equal(claudeCalls, 0);
+});
+
+test("/stats fără bază de date → enabled: false", async () => {
+  const r = await fetch(base + "/stats");
+  assert.equal(r.status, 200);
+  assert.deepEqual(await r.json(), { enabled: false });
 });
