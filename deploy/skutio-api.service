@@ -1,0 +1,25 @@
+# /etc/systemd/system/skutio-api.service — „bucătarul" care pornește singur
+# și se ridică singur dacă cade. Comenzi: sudo systemctl start|stop|restart|status skutio-api
+[Unit]
+Description=Skutio API (Node.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=skutio
+WorkingDirectory=/opt/skutio-api
+# Secretele stau în afara repo-ului, citibile doar de root (chmod 600).
+EnvironmentFile=/etc/skutio-api/env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=3
+
+# Hardening: procesul nu poate scrie pe disc în afara lui și nu devine root.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

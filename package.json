@@ -2,8 +2,13 @@
   "name": "skutio-api",
   "version": "1.0.0",
   "private": true,
-  "description": "Skutio API — proxy către Claude API pentru detecția de scam.",
+  "description": "Skutio API — proxy către Claude API pentru detecția de scam, rulat pe un VPS Linux (Node + systemd + Nginx).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --env-file=.env server.js"
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.6"
   }
 }
