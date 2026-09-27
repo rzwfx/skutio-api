@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skutio API — detecție de scam cu AI</title>
+<meta name="description" content="Backend-ul aplicației Skutio: analiză de mesaje suspecte cu Claude API, rulat pe un server Linux propriu (Nginx, systemd, HTTPS).">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="/">
+      <svg class="shield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg>
+      <span>Skutio <b>API</b></span>
+    </a>
+    <div class="status" id="status" aria-live="polite">
+      <span class="dot"></span><span id="status-text">Se verifică…</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <p class="eyebrow">Proiect personal · live în producție</p>
+    <h1>Detecție de scam cu AI, pe un server Linux configurat de la zero</h1>
+    <p class="lead">Backend-ul aplicației mobile <b>Skutio</b>: primește mesaje suspecte, le analizează cu <b>Claude API</b> și întoarce un verdict. Rulează pe un VPS propriu, cu Ubuntu, Nginx, systemd și HTTPS.</p>
+    <div class="actions">
+      <a class="btn primary" href="#demo">Vezi demo-ul live</a>
+      <a class="btn" href="https://github.com/rzwfx/skutio-api" rel="noopener">Codul pe GitHub</a>
+      <a class="btn" href="https://github.com/rzwfx/skutio-api#readme" rel="noopener">Documentație</a>
+    </div>
+  </section>
+
+  <section id="demo" class="card demo">
+    <div class="section-head">
+      <h2>Demo live</h2>
+      <p>Alege un mesaj. Analiza e făcută de Claude chiar pe acest server. Rezultatul e păstrat o oră, ca demo-ul să nu genereze costuri.</p>
+    </div>
+
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-sample="1" aria-selected="true">SMS curier fals</button>
+      <button role="tab" data-sample="2" aria-selected="false">Email phishing (EN)</button>
+      <button role="tab" data-sample="3" aria-selected="false">Mesaj normal</button>
+    </div>
+
+    <div class="demo-grid">
+      <div>
+        <p class="label">Mesajul analizat</p>
+        <div class="bubble" id="message">…</div>
+      </div>
+
+      <div>
+        <p class="label">Verdictul AI</p>
+        <div class="result" id="result" aria-live="polite">
+          <div class="loading" id="loading">
+            <span class="spinner"></span>
+            <span>Serverul analizează mesajul cu Claude…</span>
+          </div>
+          <div id="result-body" hidden>
+            <div class="verdict-row">
+              <span class="verdict" id="verdict"></span>
+              <span class="score"><b id="score"></b>/100 risc</span>
+            </div>
+            <div class="meter"><span id="meter"></span></div>
+            <p class="summary" id="summary"></p>
+            <div id="flags-wrap">
+              <p class="label">Semnale de alarmă</p>
+              <ul class="flags" id="flags"></ul>
+            </div>
+            <p class="advice" id="advice"></p>
+          </div>
+          <p class="error" id="error" hidden></p>
+        </div>
+      </div>
+    </div>
+
+    <p class="meta" id="meta"></p>
+  </section>
+
+  <section class="card">
+    <div class="section-head">
+      <h2>Drumul unei cereri</h2>
+      <p>Ce se întâmplă între momentul în care aplicația trimite un mesaj și cel în care primește verdictul.</p>
+    </div>
+    <ol class="flow">
+      <li><b>DNS</b><span><code>api.skutio.app</code> → IP-ul serverului (A + AAAA)</span></li>
+      <li><b>Firewall (ufw)</b><span>deschise doar 22 (SSH), 80 și 443</span></li>
+      <li><b>Nginx</b><span>HTTPS cu Let's Encrypt, rate limiting, headere de securitate</span></li>
+      <li><b>Node.js + systemd</b><span>ascultă doar local, rulat ca user fără privilegii, restart automat</span></li>
+      <li><b>Claude API</b><span>prompt și cheie ținute în afara codului, în <code>/etc</code></span></li>
+      <li><b>Răspuns JSON</b><span>verdict, scor, semnale de alarmă, recomandare</span></li>
+    </ol>
+  </section>
+
+  <section class="grid">
+    <div class="card feature">
+      <h3>Securitate server</h3>
+      <ul>
+        <li>Acces doar cu chei SSH, root și parole dezactivate</li>
+        <li>Firewall cu 3 porturi deschise</li>
+        <li>Aplicația rulează ca user fără shell și fără sudo</li>
+        <li>Actualizări de securitate automate</li>
+      </ul>
+    </div>
+    <div class="card feature">
+      <h3>Protecția API-ului</h3>
+      <ul>
+        <li>Secret partajat pe endpoint-urile AI (401 fără el)</li>
+        <li>Rate limiting pe IP în Nginx (429 peste limită)</li>
+        <li>Chei și prompturi în afara git, permisiuni 600/640</li>
+        <li>CSP strict și HSTS pe această pagină</li>
+      </ul>
+    </div>
+    <div class="card feature">
+      <h3>Operare</h3>
+      <ul>
+        <li>Serviciu systemd cu repornire automată (testat cu <code>kill -9</code>)</li>
+        <li>Loguri cu <code>journalctl</code>, câte o linie per cerere</li>
+        <li>Certificat HTTPS reînnoit automat</li>
+        <li>Deploy documentat pas cu pas în README</li>
+      </ul>
+    </div>
+    <div class="card feature">
+      <h3>Flux de lucru</h3>
+      <ul>
+        <li>Branch-uri și pull request-uri pentru fiecare schimbare</li>
+        <li>Teste automate rulate de GitHub Actions la fiecare PR</li>
+        <li>Construit cu Claude Code, verificat pas cu pas</li>
+        <li>Zero dependențe npm: doar Node.js</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><h2>Endpoint-uri</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Metodă</th><th>Rută</th><th>Acces</th><th>Ce face</th></tr></thead>
+        <tbody>
+          <tr><td><span class="m get">GET</span></td><td><a href="/health"><code>/health</code></a></td><td>public</td><td>Starea serverului</td></tr>
+          <tr><td><span class="m get">GET</span></td><td><a href="/demo?sample=1"><code>/demo?sample=1..3</code></a></td><td>public, limitat</td><td>Analiză AI pe mesajele demo</td></tr>
+          <tr><td><span class="m post">POST</span></td><td><code>/api/analyze</code></td><td>cheie aplicație</td><td>Analizează un mesaj sau un screenshot</td></tr>
+          <tr><td><span class="m post">POST</span></td><td><code>/api/trustcheck</code></td><td>cheie aplicație</td><td>Scor de încredere pentru un site</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap foot">
+  <p>Construit de <b>Alexandru Răzvan Ioniță</b> cu Claude Code · <a href="https://github.com/rzwfx/skutio-api" rel="noopener">github.com/rzwfx/skutio-api</a></p>
+  <p id="server-line"></p>
+</footer>
+
+</body>
+</html>
