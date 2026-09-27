@@ -1,0 +1,9 @@
+{
+  "name": "skutio-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Skutio API — proxy către Claude API pentru detecția de scam.",
+  "engines": {
+    "node": ">=18"
+  }
+}
