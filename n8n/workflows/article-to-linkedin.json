@@ -1,0 +1,283 @@
+{
+  "id": "skutioLinkedin01",
+  "name": "Articol → postare LinkedIn (Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "linkedin-post",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000001",
+      "name": "Webhook: POST /linkedin-post",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "3a8f5c1e-6b2d-4e7a-9f10-2c5d8e1a0b77"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Acceptă doar URL-uri http(s) publice. Blochează adresele interne (protecție SSRF):\n// altfel cineva ar putea folosi fluxul ca să citească servicii din rețeaua serverului.\n// Limită cunoscută: verificăm numele, nu IP-ul rezolvat prin DNS.\nconst raw = String($json.body?.url ?? '').trim();\nlet u;\ntry { u = new URL(raw); } catch { return [{ json: { valid: false, error: 'invalid_url' } }]; }\nconst h = u.hostname.toLowerCase().replace(/^\\[|\\]$/g, '');\nconst internal =\n  h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') ||\n  !h.includes('.') && !h.includes(':') ||\n  /^(0|10|127)\\./.test(h) || /^169\\.254\\./.test(h) || /^192\\.168\\./.test(h) || /^172\\.(1[6-9]|2\\d|3[01])\\./.test(h) ||\n  h === '::1' || /^f[cd]/.test(h) || /^fe80:/.test(h);\nif (!/^https?:$/.test(u.protocol) || internal) return [{ json: { valid: false, error: 'url_not_allowed' } }];\nreturn [{ json: { valid: true, url: u.toString() } }];"
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000002",
+      "name": "Validează URL-ul",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5d2c7a10-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000003",
+      "name": "URL valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; SkutioBot/1.0)"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000004",
+      "name": "Descarcă articolul",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Titlul și textul articolului din HTML (fără scripturi, stiluri și tag-uri), max 8000 caractere.\nconst html = String($json.data ?? '');\nconst url = $('Validează URL-ul').first().json.url;\nconst decode = (s) => s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>');\nconst title = decode((html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1] ?? '').trim());\nconst body = html.match(/<article[\\s\\S]*?<\\/article>/i)?.[0] ?? html;\nconst text = decode(body\n  .replace(/<(script|style|nav|header|footer|aside|noscript)[\\s\\S]*?<\\/\\1>/gi, ' ')\n  .replace(/<[^>]+>/g, ' '))\n  .replace(/\\s+/g, ' ').trim().slice(0, 8000);\nreturn [{ json: { url, title, text, chars: text.length } }];"
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000005",
+      "name": "Extrage textul",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, system: \"E\\u0219ti copywriter B2B pentru LinkedIn. Pe baza articolului primit, scrie o postare LinkedIn \\u00een limba rom\\u00e2n\\u0103: o prim\\u0103 fraz\\u0103 care atrage aten\\u021bia, 3-4 idei cheie scurte (pe r\\u00e2nduri separate), o concluzie cu un \\u00eendemn la discu\\u021bie \\u0219i 3-5 hashtag-uri relevante la final. Maximum 1300 de caractere. Ton profesionist, f\\u0103r\\u0103 emoji excesive. Nu inventa cifre, nume sau citate care nu apar \\u00een articol. Returneaz\\u0103 doar textul post\\u0103rii.\", messages: [{ role: 'user', content: 'Titlu: ' + $json.title + '\\nURL: ' + $json.url + '\\n\\nArticol:\\n' + $json.text }] }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000006",
+      "name": "Claude: scrie postarea",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const post = $json.content?.[0]?.text?.trim() ?? '';\nconst src = $('Extrage textul').first().json;\nreturn [{ json: { ok: post.length > 0, source: { url: src.url, title: src.title }, post, chars: post.length, model: $json.model } }];"
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000007",
+      "name": "Formatează răspunsul",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000008",
+      "name": "Răspuns 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "c2f0a8e2-1c1e-4a51-9a10-0d6a1c000009",
+      "name": "Răspuns 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: POST /linkedin-post": {
+      "main": [
+        [
+          {
+            "node": "Validează URL-ul",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validează URL-ul": {
+      "main": [
+        [
+          {
+            "node": "URL valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descarcă articolul": {
+      "main": [
+        [
+          {
+            "node": "Extrage textul",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrage textul": {
+      "main": [
+        [
+          {
+            "node": "Claude: scrie postarea",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: scrie postarea": {
+      "main": [
+        [
+          {
+            "node": "Formatează răspunsul",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatează răspunsul": {
+      "main": [
+        [
+          {
+            "node": "Răspuns 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URL valid?": {
+      "main": [
+        [
+          {
+            "node": "Descarcă articolul",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Răspuns 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Bucharest"
+  },
+  "active": false,
+  "pinData": {}
+}
