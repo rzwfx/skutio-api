@@ -15,7 +15,7 @@ services:
       N8N_HOST: n8n.skutio.app
       N8N_PORT: "5678"
       N8N_PROTOCOL: https
-      WEBHOOK_URL: https://n8n.skutio.app/
+      N8N_WEBHOOK_URL: https://n8n.skutio.app/
       N8N_PROXY_HOPS: "1"                    # n8n e în spatele Nginx: IP-ul real vine din X-Forwarded-For
       GENERIC_TIMEZONE: Europe/Bucharest     # pentru nodurile Schedule (cron)
       TZ: Europe/Bucharest
