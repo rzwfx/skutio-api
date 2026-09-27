@@ -4,6 +4,9 @@
 // (EnvironmentFile=/etc/skutio-api/env) sau local din `node --env-file=.env server.js`.
 
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const { getDemo, listSamples } = require("./lib/demo");
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -13,6 +16,29 @@ const routes = {
   "/api/analyze": require("./api/analyze"),
   "/api/trustcheck": require("./api/trustcheck"),
 };
+
+// Pagina de prezentare (public/). Listă explicită: nu servim nimic altceva de pe disc.
+const PUBLIC_DIR = path.join(__dirname, "public");
+const STATIC_FILES = {
+  "/": { file: "index.html", type: "text/html; charset=utf-8" },
+  "/style.css": { file: "style.css", type: "text/css; charset=utf-8" },
+  "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
+  "/favicon.svg": { file: "favicon.svg", type: "image/svg+xml" },
+};
+// Pagina încarcă doar resurse proprii: fără scripturi/stiluri externe sau inline.
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; " +
+  "frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+
+function serveStatic(req, res, entry) {
+  fs.readFile(path.join(PUBLIC_DIR, entry.file), (err, data) => {
+    if (err) return res.status(500).json({ error: "internal_error" });
+    res.setHeader("Content-Type", entry.type);
+    res.setHeader("Cache-Control", "no-cache"); // fișiere mici: mereu versiunea curentă după deploy
+    if (entry.type.startsWith("text/html")) res.setHeader("Content-Security-Policy", CSP);
+    res.statusCode = 200;
+    res.end(req.method === "HEAD" ? undefined : data);
+  });
+}
 
 // Adaugă pe `res` metodele pe care Vercel le oferă și handler-ele le folosesc.
 function vercelCompat(res) {
@@ -47,36 +73,69 @@ function readBody(req) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
-  const started = Date.now();
-  const path = (req.url || "/").split("?")[0];
-  vercelCompat(res);
-  // O linie per request → ajunge în jurnal (journalctl -u skutio-api).
-  res.on("finish", () => {
-    console.log(`${req.method} ${path} ${res.statusCode} ${Date.now() - started}ms`);
+function createServer() {
+  return http.createServer(async (req, res) => {
+    const started = Date.now();
+    const url = new URL(req.url || "/", "http://localhost");
+    const route = url.pathname;
+    vercelCompat(res);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    // O linie per request → ajunge în jurnal (journalctl -u skutio-api).
+    res.on("finish", () => {
+      console.log(`${req.method} ${route} ${res.statusCode} ${Date.now() - started}ms`);
+    });
+
+    const isRead = req.method === "GET" || req.method === "HEAD";
+
+    if (route === "/health") return res.status(200).json({ ok: true });
+
+    if (STATIC_FILES[route]) {
+      if (!isRead) return res.status(405).json({ error: "method_not_allowed" });
+      return serveStatic(req, res, STATIC_FILES[route]);
+    }
+
+    if (route === "/demo/samples") {
+      if (!isRead) return res.status(405).json({ error: "method_not_allowed" });
+      return res.status(200).json({ samples: listSamples() });
+    }
+
+    if (route === "/demo") {
+      if (!isRead) return res.status(405).json({ error: "method_not_allowed" });
+      try {
+        const { status, body } = await getDemo(url.searchParams.get("sample"));
+        res.setHeader("Cache-Control", "no-store");
+        return res.status(status).json(body);
+      } catch (e) {
+        console.error("demo error:", e);
+        return res.status(500).json({ error: "internal_error" });
+      }
+    }
+
+    const handler = routes[route];
+    if (!handler) return res.status(404).json({ error: "not_found" });
+
+    try {
+      req.body = await readBody(req);
+    } catch (e) {
+      res.setHeader("Connection", "close");
+      return res.status(e.code === 413 ? 413 : 400).json({ error: e.code === 413 ? "body_too_large" : "bad_request" });
+    }
+
+    try {
+      await handler(req, res);
+    } catch (e) {
+      console.error(`handler error ${route}:`, e);
+      if (!res.headersSent) res.status(500).json({ error: "internal_error" });
+    }
   });
+}
 
-  if (path === "/health") return res.status(200).json({ ok: true });
+// Pornește doar când e rulat direct (`node server.js`); testele importă createServer().
+if (require.main === module) {
+  const server = createServer();
+  server.listen(PORT, HOST, () => console.log(`skutio-api ascultă pe http://${HOST}:${PORT}`));
+  // systemd trimite SIGTERM la stop/restart: închidem curat conexiunile.
+  process.on("SIGTERM", () => server.close(() => process.exit(0)));
+}
 
-  const handler = routes[path];
-  if (!handler) return res.status(404).json({ error: "not_found" });
-
-  try {
-    req.body = await readBody(req);
-  } catch (e) {
-    res.setHeader("Connection", "close");
-    return res.status(e.code === 413 ? 413 : 400).json({ error: e.code === 413 ? "body_too_large" : "bad_request" });
-  }
-
-  try {
-    await handler(req, res);
-  } catch (e) {
-    console.error(`handler error ${path}:`, e);
-    if (!res.headersSent) res.status(500).json({ error: "internal_error" });
-  }
-});
-
-server.listen(PORT, HOST, () => console.log(`skutio-api ascultă pe http://${HOST}:${PORT}`));
-
-// systemd trimite SIGTERM la stop/restart: închidem curat conexiunile.
-process.on("SIGTERM", () => server.close(() => process.exit(0)));
+module.exports = { createServer };
