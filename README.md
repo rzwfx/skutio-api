@@ -42,6 +42,7 @@ Claude API (Anthropic)       PostgreSQL 16 (local, socket Unix, peer auth)
 | `migrations/` | | Migrații SQL versionate, aplicate în ordine de `scripts/migrate.js` (`npm run migrate`), fiecare într-o tranzacție. |
 | `lib/demo.js` | | Demo public pe 3 mesaje fixe: cache 1 oră, un singur apel la Claude pentru cereri simultane, fallback pe ultimul rezultat bun. |
 | `public/` | | Pagina de prezentare (HTML/CSS/JS fără dependențe, CSP strict). |
+| `mcp/` | Mac-ul dezvoltatorului | **Server MCP** care dă agenților AI (Claude Code, Claude Desktop) unelte Skutio. Vezi [Server MCP](#server-mcp). |
 | `test/` | | 27 de teste (`node --test`), cu Claude API simulat. 7 rulează pe un PostgreSQL real. Rulate de GitHub Actions la fiecare PR. |
 | `deploy/skutio-api.service` | `/etc/systemd/system/` | Serviciul systemd: pornire la boot, restart automat, hardening. |
 | `deploy/nginx-api.skutio.app.conf` | `/etc/nginx/sites-available/` | Reverse proxy, HTTPS, rate limiting per rută, headere de securitate. |
@@ -111,7 +112,44 @@ npm test                                                   # 20 de teste, fără
 DATABASE_URL=postgres://user:parola@localhost/skutio_test npm test   # + 7 teste PostgreSQL (șterge tabelele din baza dată!)
 ```
 
+Serverul MCP are testele lui: `npm test --prefix mcp` (10 teste).
+
 Acoperă rutele, codurile de eroare (401/404/405/413/502), limitele de input, pagina de prezentare (inclusiv CSP), demo-ul (cache, cereri simultane deduplicate, fallback când Claude e indisponibil) și baza de date: migrații idempotente, constrângerile tabelului, faptul că textul mesajelor nu se salvează și agregările din `/stats`. Apelul la Claude e simulat prin înlocuirea `fetch`. [GitHub Actions](.github/workflows/ci.yml) rulează toate testele la fiecare push și pull request, cu un container PostgreSQL 16.
+
+---
+
+## Server MCP
+
+`mcp/` conține un server [MCP](https://modelcontextprotocol.io) (Model Context Protocol) care îi dă unui agent AI trei unelte, toate read-only:
+
+| Unealtă | Ce face | Endpoint folosit |
+|---|---|---|
+| `analyze_message` | Verdict, scor de risc, semnale de alarmă și recomandare pentru un mesaj suspect | `POST /api/analyze` |
+| `check_website` | Scor de încredere pentru un site | `POST /api/trustcheck` |
+| `get_stats` | Statisticile serverului | `GET /stats` |
+
+Așa, în Claude Code poți scrie direct *„e țeapă mesajul ăsta? …"*, iar agentul folosește API-ul Skutio în loc să ghicească.
+
+**Instalare:**
+
+```bash
+npm ci --prefix mcp
+mkdir -p ~/.config/skutio-mcp && chmod 700 ~/.config/skutio-mcp
+(umask 077; echo "SECRETUL_APLICATIEI" > ~/.config/skutio-mcp/secret)
+```
+
+`.mcp.json` din rădăcina repo-ului îl înregistrează automat în Claude Code când deschizi proiectul (Claude Code cere o confirmare la prima pornire). Pentru alt proiect sau pentru Claude Desktop, aceeași configurație cu calea absolută:
+
+```json
+{ "mcpServers": { "skutio": { "type": "stdio", "command": "node", "args": ["/cale/spre/skutio-api/mcp/server.js"] } } }
+```
+
+**Decizii de design:**
+- **Transport stdio:** clientul pornește serverul local. Nimic nu ascultă pe rețea, deci nu e nicio suprafață de atac în plus.
+- **Secretul nu e în `.mcp.json`**, deci configurația poate fi în git. Se citește din `SKUTIO_APP_SECRET` sau dintr-un fișier `600`, la fiecare apel.
+- **Erori explicate pentru agent** (cheie lipsă sau greșită, 429, API indisponibil), ca să le poată spune utilizatorului pe înțeles.
+- **Validare cu zod** a inputului înainte de orice cerere la API.
+- **10 teste** în `mcp/test/`: un client MCP real (din SDK-ul oficial) pornește serverul prin stdio, ca un agent adevărat, și îl conectează la un API fals local.
 
 ---
 
