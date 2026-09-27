@@ -82,6 +82,32 @@
     <p class="meta" id="meta"></p>
   </section>
 
+  <section class="card" id="stats-card" hidden>
+    <div class="section-head">
+      <h2>Statistici live din PostgreSQL</h2>
+      <p>Fiecare apel real la Claude făcut de acest server se salvează într-o bază de date PostgreSQL, doar ca metadate (verdict, scor, durată). Textul mesajelor nu se păstrează.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="st-total">–</b><span>analize în total</span></div>
+      <div class="stat"><b id="st-24h">–</b><span>în ultimele 24 de ore</span></div>
+      <div class="stat"><b id="st-danger">–</b><span>verdicte „periculos"</span></div>
+      <div class="stat"><b id="st-avg">–</b><span>timp mediu de analiză</span></div>
+    </div>
+    <details class="sql">
+      <summary>Interogarea SQL din spatele cifrelor</summary>
+<pre><code>SELECT
+  count(*)                                                    AS total,
+  count(*) FILTER (WHERE created_at > now() - interval '24 hours') AS last_24h,
+  count(*) FILTER (WHERE verdict = 'dangerous')               AS dangerous,
+  count(*) FILTER (WHERE verdict = 'suspicious')              AS suspicious,
+  count(*) FILTER (WHERE verdict = 'safe')                    AS safe,
+  round(avg(duration_ms))                                     AS avg_duration_ms,
+  min(created_at)                                             AS since
+FROM analyses;</code></pre>
+    </details>
+    <p class="meta" id="st-meta"></p>
+  </section>
+
   <section class="card">
     <div class="section-head">
       <h2>Drumul unei cereri</h2>
@@ -92,7 +118,7 @@
       <li><b>Firewall (ufw)</b><span>deschise doar 22 (SSH), 80 și 443</span></li>
       <li><b>Nginx</b><span>HTTPS cu Let's Encrypt, rate limiting, headere de securitate</span></li>
       <li><b>Node.js + systemd</b><span>ascultă doar local, rulat ca user fără privilegii, restart automat</span></li>
-      <li><b>Claude API</b><span>prompt și cheie ținute în afara codului, în <code>/etc</code></span></li>
+      <li><b>Claude API + PostgreSQL</b><span>prompt și cheie în afara codului; metadatele analizei salvate în baza de date</span></li>
       <li><b>Răspuns JSON</b><span>verdict, scor, semnale de alarmă, recomandare</span></li>
     </ol>
   </section>
@@ -122,6 +148,7 @@
         <li>Serviciu systemd cu repornire automată (testat cu <code>kill -9</code>)</li>
         <li>Loguri cu <code>journalctl</code>, câte o linie per cerere</li>
         <li>Certificat HTTPS reînnoit automat</li>
+        <li>PostgreSQL cu migrații versionate și backup zilnic prin cron</li>
         <li>Deploy documentat pas cu pas în README</li>
       </ul>
     </div>
@@ -131,7 +158,7 @@
         <li>Branch-uri și pull request-uri pentru fiecare schimbare</li>
         <li>Teste automate rulate de GitHub Actions la fiecare PR</li>
         <li>Construit cu Claude Code, verificat pas cu pas</li>
-        <li>Zero dependențe npm: doar Node.js</li>
+        <li>O singură dependență npm: driverul PostgreSQL (<code>pg</code>)</li>
       </ul>
     </div>
   </section>
@@ -144,6 +171,7 @@
         <tbody>
           <tr><td><span class="m get">GET</span></td><td><a href="/health"><code>/health</code></a></td><td>public</td><td>Starea serverului</td></tr>
           <tr><td><span class="m get">GET</span></td><td><a href="/demo?sample=1"><code>/demo?sample=1..3</code></a></td><td>public, limitat</td><td>Analiză AI pe mesajele demo</td></tr>
+          <tr><td><span class="m get">GET</span></td><td><a href="/stats"><code>/stats</code></a></td><td>public</td><td>Statistici agregate din PostgreSQL</td></tr>
           <tr><td><span class="m post">POST</span></td><td><code>/api/analyze</code></td><td>cheie aplicație</td><td>Analizează un mesaj sau un screenshot</td></tr>
           <tr><td><span class="m post">POST</span></td><td><code>/api/trustcheck</code></td><td>cheie aplicație</td><td>Scor de încredere pentru un site</td></tr>
         </tbody>

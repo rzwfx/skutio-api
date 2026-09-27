@@ -7,6 +7,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { getDemo, listSamples } = require("./lib/demo");
+const db = require("./lib/db");
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -99,6 +100,13 @@ function createServer() {
       return serveStatic(req, res, STATIC_FILES[route]);
     }
 
+    if (route === "/stats") {
+      if (!isRead) return res.status(405).json({ error: "method_not_allowed" });
+      const { status, body } = await db.getStats();
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(status).json(body);
+    }
+
     if (route === "/demo/samples") {
       if (!isRead) return res.status(405).json({ error: "method_not_allowed" });
       return res.status(200).json({ samples: listSamples() });
@@ -139,8 +147,8 @@ function createServer() {
 if (require.main === module) {
   const server = createServer();
   server.listen(PORT, HOST, () => console.log(`skutio-api ascultă pe http://${HOST}:${PORT}`));
-  // systemd trimite SIGTERM la stop/restart: închidem curat conexiunile.
-  process.on("SIGTERM", () => server.close(() => process.exit(0)));
+  // systemd trimite SIGTERM la stop/restart: închidem curat conexiunile HTTP și pe cele la baza de date.
+  process.on("SIGTERM", () => server.close(() => db.close().finally(() => process.exit(0))));
 }
 
 module.exports = { createServer };
