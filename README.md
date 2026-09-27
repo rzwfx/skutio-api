@@ -42,6 +42,8 @@ Claude API (Anthropic)       PostgreSQL 16 (local, socket Unix, peer auth)
 | `migrations/` | | Migrații SQL versionate, aplicate în ordine de `scripts/migrate.js` (`npm run migrate`), fiecare într-o tranzacție. |
 | `lib/demo.js` | | Demo public pe 3 mesaje fixe: cache 1 oră, un singur apel la Claude pentru cereri simultane, fallback pe ultimul rezultat bun. |
 | `public/` | | Pagina de prezentare (HTML/CSS/JS fără dependențe, CSP strict). |
+| `deploy/n8n/docker-compose.yml` | `/opt/n8n/` | n8n (automatizări) în Docker, versiune fixată, doar pe `127.0.0.1`. |
+| `n8n/workflows/` | importate în n8n | Fluxurile n8n ca JSON, versionate în git (fără credențiale). Vezi [Automatizări (n8n)](#automatizări-n8n). |
 | `mcp/` | Mac-ul dezvoltatorului | **Server MCP** care dă agenților AI (Claude Code, Claude Desktop) unelte Skutio. Vezi [Server MCP](#server-mcp). |
 | `test/` | | 27 de teste (`node --test`), cu Claude API simulat. 7 rulează pe un PostgreSQL real. Rulate de GitHub Actions la fiecare PR. |
 | `deploy/skutio-api.service` | `/etc/systemd/system/` | Serviciul systemd: pornire la boot, restart automat, hardening. |
@@ -115,6 +117,50 @@ DATABASE_URL=postgres://user:parola@localhost/skutio_test npm test   # + 7 teste
 Serverul MCP are testele lui: `npm test --prefix mcp` (10 teste).
 
 Acoperă rutele, codurile de eroare (401/404/405/413/502), limitele de input, pagina de prezentare (inclusiv CSP), demo-ul (cache, cereri simultane deduplicate, fallback când Claude e indisponibil) și baza de date: migrații idempotente, constrângerile tabelului, faptul că textul mesajelor nu se salvează și agregările din `/stats`. Apelul la Claude e simulat prin înlocuirea `fetch`. [GitHub Actions](.github/workflows/ci.yml) rulează toate testele la fiecare push și pull request, cu un container PostgreSQL 16.
+
+---
+
+## Automatizări (n8n)
+
+[n8n](https://n8n.io) rulează în Docker pe același server, la **https://n8n.skutio.app**, cu două fluxuri:
+
+| Flux | Declanșator | Ce face |
+|---|---|---|
+| **Monitorizare uptime** ([JSON](n8n/workflows/uptime-monitor.json)) | Cron, la fiecare 5 minute | `GET /health`. Trimite alertă pe **Telegram** doar când starea se **schimbă** (a căzut / și-a revenit), nu la fiecare verificare. Starea anterioară se ține în datele statice ale fluxului. |
+| **Articol → postare LinkedIn** ([JSON](n8n/workflows/article-to-linkedin.json)) | Webhook `POST /webhook/linkedin-post` | Validează URL-ul (protecție SSRF), descarcă articolul, extrage textul, iar Claude scrie o postare LinkedIn în română. Răspunsul e JSON. Webhook-ul cere un header secret. |
+
+```bash
+curl -X POST https://n8n.skutio.app/webhook/linkedin-post \
+  -H "Content-Type: application/json" -H "x-skutio-key: $SECRET_WEBHOOK" \
+  -d '{"url":"https://exemplu.ro/articol"}'
+# {"ok":true,"source":{"url":"...","title":"..."},"post":"...","chars":1180}
+```
+
+**Instalare:**
+
+```bash
+# Docker din repo-ul oficial (cheie GPG verificată), apoi:
+sudo install -d /opt/n8n && sudo cp deploy/n8n/docker-compose.yml /opt/n8n/
+sudo docker compose -f /opt/n8n/docker-compose.yml up -d
+sudo cp deploy/nginx-n8n.skutio.app.conf /etc/nginx/sites-available/n8n.skutio.app
+sudo ln -s /etc/nginx/sites-available/n8n.skutio.app /etc/nginx/sites-enabled/
+sudo certbot --nginx -d n8n.skutio.app --redirect
+
+# fluxurile din git → n8n
+sudo docker cp n8n/workflows/uptime-monitor.json n8n:/tmp/
+sudo docker exec -u node n8n n8n import:workflow --input=/tmp/uptime-monitor.json
+sudo docker exec -u node n8n n8n publish:workflow --id=skutioUptime0001 && sudo docker restart n8n
+```
+
+Credențialele (tokenul botului Telegram, cheia Claude, secretul webhook-ului) se adaugă din interfața n8n, unde sunt stocate criptat. Nu sunt în git.
+
+**Decizii de securitate:**
+- **Docker ocolește `ufw`**: un port publicat ca `5678:5678` ar fi accesibil din internet chiar dacă firewall-ul îl blochează. De aceea n8n e publicat doar pe `127.0.0.1:5678`, iar singura intrare e Nginx cu HTTPS.
+- **Setup-ul inițial restricționat pe IP**: o instanță nouă n8n îi permite primului vizitator să-și creeze contul de owner. Până la crearea contului, Nginx a permis accesul doar de pe IP-ul administratorului (`deploy/`, snippet-ul `n8n-setup-allowlist`).
+- **Rate limiting**: login 5/min (contra ghicirii parolei), webhook-uri 10/min.
+- **Versiune fixată** (`n8nio/n8n:2.40.7`), limită de memorie 1 GB, fără telemetrie. Userul `razvan` nu e în grupul `docker` (echivalent cu root): comenzile Docker se dau explicit cu `sudo`.
+- **Lecții din n8n 2.x** (găsite la primul test real): în nodurile Code, în modul implicit „Run Once for All Items", `$json` nu există și datele se citesc cu `$input.first().json`. Iar sandbox-ul task runner nu are clasa globală `URL`, deci parsarea se face cu regex. Ambele erori erau ascunse de un `try/catch` și au ieșit la iveală inspectând datele execuției.
+- **SSRF**: fluxul LinkedIn refuză URL-uri către rețele interne (`localhost`, `10.x`, `192.168.x`, `169.254.x`, IPv6 local, IP-uri scrise zecimal precum `http://2130706433/`). Limită cunoscută: se verifică numele, nu IP-ul rezolvat prin DNS.
 
 ---
 
