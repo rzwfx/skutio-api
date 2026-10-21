@@ -4,7 +4,7 @@
 
 Backend-ul aplicației mobile **Skutio**, care detectează mesaje și site-uri de tip scam cu ajutorul Claude API. Rulează pe un server Linux propriu (Hetzner Cloud, Ubuntu 24.04), cu Node.js sub systemd, PostgreSQL pentru statistici și Nginx cu HTTPS de la Let's Encrypt în față.
 
-**Demo live:** https://api.skutio.app · **Automatizări:** https://n8n.skutio.app · **Statistici:** https://api.skutio.app/stats. Pagina rulează o analiză AI reală pe mesaje de test, direct pe acest server.
+> **Arhivat (octombrie 2026).** Serverul a rulat între 27 septembrie și 21 octombrie 2026 și a fost oprit, ca să nu țin resurse plătite pornite fără un proiect activ. https://api.skutio.app afișează acum o pagină de arhivă (GitHub Pages, ramura `gh-pages`) cu rezultatele reale salvate. Tot ce e mai jos rămâne valabil: serverul poate fi refăcut de la zero urmând pașii din [Deploy de la zero pe un VPS](#deploy-de-la-zero-pe-un-vps). Adresele IP din exemple aparțineau serverului șters.
 
 Proiectul a pornit ca funcții serverless pe Vercel. L-am mutat pe un VPS configurat de la zero ca să înțeleg și să controlez fiecare strat: SSH, firewall, servicii, reverse proxy, certificate, DNS și loguri.
 
