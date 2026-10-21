@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skutio API — demo arhivat</title>
+<meta name="description" content="Arhiva demo-ului Skutio API: detecție de scam cu Claude API, rulat pe un server Linux propriu (Node.js, PostgreSQL, Nginx, n8n în Docker). Rezultate reale și codul pe GitHub.">
+<link rel="canonical" href="https://api.skutio.app/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top"><div class="wrap top-inner">
+  <a class="brand" href="/"><svg class="shield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"/></svg><span>Skutio <b>API</b></span></a>
+  <span class="status"><span class="dot"></span>Demo arhivat</span>
+</div></header>
+
+<main class="wrap">
+  <section class="hero">
+    <p class="eyebrow">Proiect personal · arhivă</p>
+    <h1>Skutio API — demo arhivat</h1>
+    <p class="lead">Demo-ul live a rulat pe un server Linux configurat de mine de la zero (Hetzner, Ubuntu): Node.js, PostgreSQL, Nginx cu HTTPS, n8n în Docker, cu monitorizare și backup automat. A fost activ între septembrie și octombrie 2026, apoi l-am oprit ca să nu țin resurse plătite pornite fără un proiect activ.</p>
+    <p class="lead">Mai jos sunt rezultatele reale salvate din perioada de funcționare. Codul complet și pașii de instalare sunt pe GitHub, iar serverul poate fi refăcut oricând.</p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/rzwfx/skutio-api" rel="noopener">Codul pe GitHub</a>
+      <a class="btn" href="https://github.com/rzwfx/skutio-api#readme" rel="noopener">Documentație</a>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Rezultate reale salvate</h2>
+      <p>Analizele făcute de Claude pe serverul live, pentru cele trei mesaje demo.</p></div>
+    <div class="demo-list">
+    <article class="card demo-card">
+      <p class="label">SMS curier fals</p>
+      <div class="bubble">FAN Courier: Coletul dvs. nu a putut fi livrat din cauza unei taxe vamale neachitate de 2,99 RON. Platiti in 24h aici: https://fancourier-ro.delivery-taxa.top/plata altfel coletul va fi returnat.</div>
+      <div class="verdict-row"><span class="verdict dangerous">Periculos</span><span class="score"><b>95</b>/100 risc</span></div>
+      <div class="meter dangerous"><span class="w95"></span></div>
+      <p class="summary">Acesta este un mesaj fals care imită FAN Courier pentru a vă fura datele bancare sau banii.</p>
+      <p class="label">Semnale de alarmă</p><ul class="flags"><li>Domeniu fals și suspect: &#x27;fancourier-ro.delivery-taxa.top&#x27; nu este site-ul oficial FAN Courier (fancourier.ro)</li><li>Presiune artificială de timp: &#x27;plătiți în 24h altfel coletul va fi returnat&#x27;</li><li>Sumă mică (2,99 RON) folosită pentru a părea credibilă și a atrage clicuri</li><li>Site-ul oficial FAN Courier nu solicită plăți prin link-uri trimise prin SMS</li><li>Subdomeniile tip &#x27;delivery-taxa.top&#x27; sunt tipice pentru site-uri de phishing</li></ul>
+      <p class="advice">Nu accesați link-ul, ștergeți mesajul și verificați orice colet direct pe site-ul oficial fancourier.ro sau sunați la serviciul lor de relații clienți.</p>
+      <p class="meta">Analizat de Claude pe 21 octombrie 2026, în 8,5 s · Ubuntu 24.04.5 LTS</p>
+    </article>
+    <article class="card demo-card">
+      <p class="label">Email phishing (EN)</p>
+      <div class="bubble">Netflix: Your payment was declined and your membership will be suspended within 24 hours. Update your billing details now to avoid interruption: https://netflix-billing-update.support/account</div>
+      <div class="verdict-row"><span class="verdict dangerous">Periculos</span><span class="score"><b>95</b>/100 risc</span></div>
+      <div class="meter dangerous"><span class="w95"></span></div>
+      <p class="summary">This is a phishing scam impersonating Netflix to steal your payment details.</p>
+      <p class="label">Semnale de alarmă</p><ul class="flags"><li>Fake domain — Netflix never uses &#x27;netflix-billing-update.support&#x27;; official domain is netflix.com</li><li>Urgent 24-hour deadline created to pressure you into acting without thinking</li><li>Threatening account suspension to trigger fear and panic</li><li>Unsolicited message asking you to click a link and enter billing/payment information</li><li>Generic message with no personalization (no name, no last 4 digits of card, etc.)</li></ul>
+      <p class="advice">Do NOT click the link — go directly to netflix.com by typing it in your browser to check your account status, and report this message as phishing.</p>
+      <p class="meta">Analizat de Claude pe 21 octombrie 2026, în 5,2 s · Ubuntu 24.04.5 LTS</p>
+    </article>
+    <article class="card demo-card">
+      <p class="label">Mesaj normal</p>
+      <div class="bubble">Salut! Ne vedem mâine la 7 la cafeneaua din centru? Am rezervat deja masa.</div>
+      <div class="verdict-row"><span class="verdict safe">Sigur</span><span class="score"><b>2</b>/100 risc</span></div>
+      <div class="meter safe"><span class="w5"></span></div>
+      <p class="summary">Acest mesaj pare a fi o invitație obișnuită din partea unui prieten sau cunoscut, fără niciun semn de înșelătorie.</p>
+      
+      <p class="advice">Nu este nevoie de nicio acțiune specială — răspunde normal la mesaj.</p>
+      <p class="meta">Analizat de Claude pe 21 octombrie 2026, în 3,6 s · Ubuntu 24.04.5 LTS</p>
+    </article>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><h2>Statistici din PostgreSQL</h2>
+      <p>Fiecare apel real la Claude a fost salvat ca metadate (verdict, scor, durată), fără textul mesajelor.</p></div>
+    <div class="stats">
+      <div class="stat"><b>31</b><span>analize în total</span></div>
+      <div class="stat"><b>97%</b><span>verdicte „periculos"</span></div>
+      <div class="stat"><b>7,9 s</b><span>timp mediu de analiză</span></div>
+      <div class="stat"><b>27 septembrie</b><span>prima analiză (2026)</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-head"><h2>Ce a rulat pe server</h2></div>
+    <ul class="checks">
+      <li>Ubuntu 24.04 pe Hetzner Cloud, acces doar cu chei SSH, firewall <code>ufw</code></li>
+      <li>API Node.js ca serviciu <code>systemd</code>, în spatele Nginx cu HTTPS (Let's Encrypt) și rate limiting</li>
+      <li>PostgreSQL cu migrații versionate și backup zilnic prin <code>cron</code></li>
+      <li>n8n în Docker: monitorizare la 5 minute cu alertă pe Telegram, flux articol → postare LinkedIn cu Claude</li>
+      <li>Server MCP propriu, prin care Claude Code folosește API-ul</li>
+      <li>37 de teste automate rulate de GitHub Actions la fiecare pull request</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="wrap foot"><p>Construit de <b>Alexandru Răzvan Ioniță</b> cu Claude Code · <a href="https://github.com/rzwfx/skutio-api" rel="noopener">github.com/rzwfx/skutio-api</a></p></footer>
+</body>
+</html>
